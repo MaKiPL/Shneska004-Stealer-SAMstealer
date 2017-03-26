@@ -118,7 +118,10 @@ int main()
 	VOID * ntfsboot = malloc(sizeof(struct NTFS_PART_BOOT_SEC));
 	DWORD bootsz = sizeof(struct NTFS_PART_BOOT_SEC);
 	
-	int errtest = ReadFile(dev, ntfsboot, 512, &brre, NULL); //Error 87 if OutSize is not 1024 const. WTF???? 512 fixes critical kernel error.. lol wtf is happening here?
+	int errtest = ReadFile(dev, ntfsboot, bytespersector, &brre, NULL); //Error 87 if OutSize is not 1024 const. WTF???? 512 fixes critical kernel error.. lol wtf is happening here?
+	//okay, that's probably because you must read buffer as one sector (that's why non pow(2) values doesn't work)
+	//also I overwrote buffer and it could hit the important data so it caused critical kernel error on further memory operations
+	//and also main return
 	if(errtest==0)
 		outerr(GetLastError());
 	struct NTFS_PART_BOOT_SEC * ntboot = (struct NTFS_PART_BOOT_SEC*)ntfsboot;
