@@ -43,8 +43,6 @@ void outerr(DWORD errmess);
 char rootdriver;
 DWORD CheckFile(USN_RECORD *rec);
 
-ULONG64 filescount = 0;
-
 const wchar_t * sam = L"SAM";
 const wchar_t * sec = L"SECURITY";
 
@@ -116,9 +114,10 @@ int main()
 	printf("2. Obtained device geometry!\n");
 
 	VOID * ntfsboot = malloc(sizeof(struct NTFS_PART_BOOT_SEC));
-	DWORD bootsz = sizeof(struct NTFS_PART_BOOT_SEC);
-	
-	int errtest = ReadFile(dev, ntfsboot, bytespersector, &brre, NULL); //Error 87 if OutSize is not 1024 const. WTF???? 512 fixes critical kernel error.. lol wtf is happening here?
+	DWORD bootsz = bytespersector;
+	if (bytespersector > 512)
+		bootsz = 512;
+	int errtest = ReadFile(dev, ntfsboot, bootsz, &brre, NULL); //Error 87 if OutSize is not 1024 const. WTF???? 512 fixes critical kernel error.. lol wtf is happening here?
 	//okay, that's probably because you must read buffer as one sector (that's why non pow(2) values doesn't work)
 	//also I overwrote buffer and it could hit the important data so it caused critical kernel error on further memory operations
 	//and also main return
@@ -172,7 +171,7 @@ void outerr(DWORD errmess)
 	}
 }
 
-DWORD CheckFile(USN_RECORD *rec) //DEBUG version
+/*DWORD CheckFile(USN_RECORD *rec) //DEBUG version
 {
 	__asm
 	{
@@ -184,3 +183,4 @@ DWORD CheckFile(USN_RECORD *rec) //DEBUG version
 	}
 		return 0;
 }
+*/
