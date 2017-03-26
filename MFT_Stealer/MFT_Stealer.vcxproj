@@ -149,6 +149,9 @@
   <ItemGroup>
     <ClCompile Include="shneska004.c" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="NTFSstructs.h" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

@@ -1,6 +1,43 @@
 #include <stdio.h>
+#include <stdlib.h>
+//#include "NTFSstructs.h"
 #include <Windows.h>
 
+
+//Undelete 
+#pragma pack(1)
+struct NTFS_PART_BOOT_SEC
+{
+	char		chJumpInstruction[3];
+	char		chOemID[4];
+	char		chDummy[4];
+
+	struct NTFS_BPB
+	{
+		WORD		wBytesPerSec;
+		BYTE		uchSecPerClust;
+		WORD		wReservedSec;
+		BYTE		uchReserved[3];
+		WORD		wUnused1;
+		BYTE		uchMediaDescriptor;
+		WORD		wUnused2;
+		WORD		wSecPerTrack;
+		WORD		wNumberOfHeads;
+		DWORD		dwHiddenSec;
+		DWORD		dwUnused3;
+		DWORD		dwUnused4;
+		LONGLONG	n64TotalSec;
+		LONGLONG	n64MFTLogicalClustNum;
+		LONGLONG	n64MFTMirrLogicalClustNum;
+		int			nClustPerMFTRecord;
+		int			nClustPerIndexRecord;
+		LONGLONG	n64VolumeSerialNum;
+		DWORD		dwChecksum;
+	} bpb;
+
+	char		chBootstrapCode[426];
+	WORD		wSecMark;
+};
 
 void outerr(DWORD errmess);
 char rootdriver;
@@ -65,7 +102,7 @@ int main()
 
 	*/
 	DISK_GEOMETRY * dg = malloc(sizeof(DISK_GEOMETRY));
-	
+
 	if (DeviceIoControl(dev, IOCTL_DISK_GET_DRIVE_GEOMETRY, NULL, 0, dg, sizeof(DISK_GEOMETRY), &brre, NULL))
 	{
 		bytespersector = dg->BytesPerSector;
@@ -77,6 +114,27 @@ int main()
 		outerr(GetLastError());
 
 	printf("2. Obtained device geometry!\n");
+
+	VOID * ntfsboot = malloc(sizeof(struct NTFS_PART_BOOT_SEC));
+	DWORD bootsz = sizeof(struct NTFS_PART_BOOT_SEC);
+	
+	int errtest = ReadFile(dev, ntfsboot, 512, &brre, NULL); //Error 87 if OutSize is not 1024 const. WTF???? 512 fixes critical kernel error.. lol wtf is happening here?
+	if(errtest==0)
+		outerr(GetLastError());
+	struct NTFS_PART_BOOT_SEC * ntboot = (struct NTFS_PART_BOOT_SEC*)ntfsboot;
+
+	
+
+	printf("3. Got the disk boot sector!");
+
+	if (memcmp(ntboot->chOemID, "NTFS", 4))
+		return -1;
+
+	DWORD bytespercluster = ntboot->bpb.uchSecPerClust * ntboot->bpb.wBytesPerSec;
+
+	DWORD MFTRecordSize = 0x01 << ((-1)*((char)ntboot->bpb.nClustPerMFTRecord));
+
+
 	/*
 	while (1)
 	{
@@ -93,6 +151,8 @@ int main()
 			outerr(GetLastError());
 	}
 	*/
+
+	int * mftbb = malloc(sizeof(byte) * 1024);
 
 
     return 0;
