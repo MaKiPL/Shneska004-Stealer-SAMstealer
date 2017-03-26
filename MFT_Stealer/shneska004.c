@@ -11,9 +11,17 @@ ULONG64 filescount = 0;
 const wchar_t * sam = L"SAM";
 const wchar_t * sec = L"SECURITY";
 
+//disc
+DWORD bytespersector = 0;
+LARGE_INTEGER cylinders = { 0 };
+DWORD sectorspertrack = 0;
+DWORD trackpercylinder = 0;
+
 int main()
 {
-	MFT_ENUM_DATA_V0 mftenumdata;
+	//MFT_ENUM_DATA_V0 mftenumdata;
+
+
 	char * c = getenv("SYSTEMROOT");
 	rootdriver = *c ;
 	wchar_t * py = (wchar_t*)malloc(32);
@@ -22,16 +30,18 @@ int main()
 	if (dev == INVALID_HANDLE_VALUE)
 		return -1;
 	printf("1. Device opened\n");
+
+	DWORD brre = 1;
+
 	//MFT_ENUM_DATA * mftenumdata = malloc(sizeof( MFT_ENUM_DATA));
 	
-	mftenumdata.StartFileReferenceNumber = 0;
+	/*mftenumdata.StartFileReferenceNumber = 0;
 	mftenumdata.LowUsn = 0;
 	
 
 	
 	DWORD bufffsz = 1024 * 1024;
 	VOID * outbuff = malloc(bufffsz);
-	DWORD brre = 1;
 	if (!DeviceIoControl(dev, FSCTL_QUERY_USN_JOURNAL, NULL, 0, outbuff, bufffsz, &brre, NULL))
 		outerr(GetLastError());
 
@@ -51,8 +61,23 @@ int main()
 	else
 		outerr(GetLastError());
 
-	printf("3. Test ENUM USN jrnl success!\n\tEnumerating USN\n");
+	printf("3. Test ENUM USN jrnl success!\n");
 
+	*/
+	DISK_GEOMETRY * dg = malloc(sizeof(DISK_GEOMETRY));
+	
+	if (DeviceIoControl(dev, IOCTL_DISK_GET_DRIVE_GEOMETRY, NULL, 0, dg, sizeof(DISK_GEOMETRY), &brre, NULL))
+	{
+		bytespersector = dg->BytesPerSector;
+		cylinders = dg->Cylinders;
+		sectorspertrack = dg->SectorsPerTrack;
+		trackpercylinder = dg->TracksPerCylinder;
+	}
+	else
+		outerr(GetLastError());
+
+	printf("2. Obtained device geometry!\n");
+	/*
 	while (1)
 	{
 
@@ -67,6 +92,7 @@ int main()
 		else
 			outerr(GetLastError());
 	}
+	*/
 
 
     return 0;
@@ -91,7 +117,7 @@ DWORD CheckFile(USN_RECORD *rec) //DEBUG version
 	}
 	if (rec->FileName)
 	{
-		printf("%s", rec->FileName);
+		printf("%ws", rec->FileName);
 	}
 		return 0;
 }
