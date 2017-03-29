@@ -256,13 +256,16 @@ int main()
 			ntatr_std = (struct NTFS_ATTRIBUTE*)mftrecordtempvar;
 		if (ntatr->dwType == 0x30) 
 		{
-			/*ntatr_fnm = (struct NTFS_ATTRIBUTE*)mftrecordtempvar;
-			DWORD filenamepointer = ntatr_fnm->wNameOffset;
-			char * c = *(mftrecordtempvar + filenamepointer);*/
-			BYTE filesize = mftrecordtempvar + 0x40;
-			wchar_t * c = mftrecordtempvar + 0x42;
-			*c = *(mftrecordtempvar + 0x42); // $MFT is near, use memory viewer!
-			printf("");
+			ntatr_fnm = (struct NTFS_ATTRIBUTE*)mftrecordtempvar;
+			/*DWORD filenamepointer = ntatr_fnm->wNameOffset;
+			char * dc = *(mftrecordtempvar + filenamepointer);*/
+				//BYTE filesize = mftrecordtempvar + 0x40; invalid?
+			
+			wchar_t *c = (mftrecordtempvar + (0x42 + ntatr_fnm->wNameOffset)); // $MFT is near, use memory viewer!
+			if (!lstrcmpW(c, L"$FMT"))
+				return -1;
+
+
 		}
 
 		if (ntatr->dwType == -1)
@@ -270,16 +273,14 @@ int main()
 
 		curpos += nextatr;
 	}
-	//AGAIN
-	while (1) 
+
+	//LOOPSTER
+	while (1)
 	{
-		SetFilePointer(dev, 1024, 0, FILE_CURRENT);
-		curpos = 0;
+		SetFilePointer(dev, 1024, NULL, FILE_CURRENT);
 		errtest = ReadFile(dev, mftbb, MFTRecordSize, &brre, NULL);
 		if (errtest == 0)
 			outerr(GetLastError());
-		//struct NTFS_MFT_FILE *MFT = (struct NTFS_MFT_FILE*)mftbb;
-		//BYTE * mftrecordtempvar = &mftbb;
 		__asm
 		{
 			PUSH EAX
@@ -288,10 +289,7 @@ int main()
 			POP EAX
 		}
 		MFT = (struct NTFS_MFT_FILE*)mftrecordtempvar;
-		printf("5. Read $MFT; Querying files\n");
-
 		curpos = MFT->wAttribOffset;
-
 		while (1) {
 			__asm
 			{
@@ -310,18 +308,23 @@ int main()
 			if (ntatr->dwType == 0x30)
 			{
 				ntatr_fnm = (struct NTFS_ATTRIBUTE*)mftrecordtempvar;
-				DWORD filenamepointer = ntatr_fnm->wNameOffset;
-				char * c = *(mftrecordtempvar + filenamepointer);
-				OutputDebugStringA(c);
+				DWORD relFpath = ntatr_fnm->wNameOffset;
+				relFpath = relFpath == 0 ? 0x0F : relFpath;
+
+				//wchar_t *c = (mftrecordtempvar + (0x42 + relFpath));
+				wchar_t *c = (mftrecordtempvar + (0x5A));
+				wprintf(L"%ls\n", c); //DELETE ME
 			}
 
 			if (ntatr->dwType == -1)
 				break;
 
-			curpos += nextatr;
+			if (ntatr->dwType == 0)
+				break;
+
+			curpos += (nextatr & 0xFFFF);
 		}
 	}
-	//Read whole MFT
 	
 
 
