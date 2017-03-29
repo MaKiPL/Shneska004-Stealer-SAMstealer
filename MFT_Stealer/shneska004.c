@@ -39,6 +39,61 @@ struct NTFS_PART_BOOT_SEC
 	WORD		wSecMark;
 };
 
+struct NTFS_MFT_FILE
+{
+	char		szSignature[4];		// Signature "FILE"
+	WORD		wFixupOffset;		// offset to fixup pattern
+	WORD		wFixupSize;			// Size of fixup-list +1
+	LONGLONG	n64LogSeqNumber;	// log file seq number
+	WORD		wSequence;			// sequence nr in MFT
+	WORD		wHardLinks;			// Hard-link count
+	WORD		wAttribOffset;		// Offset to seq of Attributes
+	WORD		wFlags;				// 0x01 = NonRes; 0x02 = Dir
+	DWORD		dwRecLength;		// Real size of the record
+	DWORD		dwAllLength;		// Allocated size of the record
+	LONGLONG	n64BaseMftRec;		// ptr to base MFT rec or 0
+	WORD		wNextAttrID;		// Minimum Identificator +1
+	WORD		wFixupPattern;		// Current fixup pattern
+	DWORD		dwMFTRecNumber;		// Number of this MFT Record
+									// followed by resident and
+									// part of non-res attributes
+};
+
+struct NTFS_ATTRIBUTE	// if resident then + RESIDENT
+{					//  else + NONRESIDENT
+	DWORD	dwType;
+	DWORD	dwFullLength;
+	BYTE	uchNonResFlag;
+	BYTE	uchNameLength;
+	WORD	wNameOffset;
+	WORD	wFlags;
+	WORD	wID;
+
+	union ATTR
+	{
+		struct RESIDENT
+		{
+			DWORD	dwLength;
+			WORD	wAttrOffset;
+			BYTE	uchIndexedTag;
+			BYTE	uchPadding;
+		} Resident;
+
+		struct NONRESIDENT
+		{
+			LONGLONG	n64StartVCN;
+			LONGLONG	n64EndVCN;
+			WORD		wDatarunOffset;
+			WORD		wCompressionSize; // compression unit size
+			BYTE		uchPadding[4];
+			LONGLONG	n64AllocSize;
+			LONGLONG	n64RealSize;
+			LONGLONG	n64StreamSize;
+			// data runs...
+		}NonResident;
+	}Attr;
+};
+
 void outerr(DWORD errmess);
 char rootdriver;
 DWORD CheckFile(USN_RECORD *rec);
@@ -127,7 +182,7 @@ int main()
 
 	
 
-	printf("3. Got the disk boot sector!");
+	printf("3. Got the disk boot sector!\n");
 
 	if (memcmp(ntboot->chOemID, "NTFS", 4))
 		return -1;
@@ -154,7 +209,120 @@ int main()
 	}
 	*/
 
-	int * mftbb = malloc(sizeof(byte) * 1024);
+	int * mftbb = malloc(sizeof(byte) * MFTRecordSize);
+
+
+	LARGE_INTEGER li;
+	li.QuadPart = (LONGLONG)ntboot->bpb.n64MFTLogicalClustNum * bytespercluster;
+	errtest = SetFilePointer(dev, li.LowPart, &li.HighPart, FILE_BEGIN);
+	if (errtest == -1)
+		outerr(GetLastError());
+	printf("4. Reading $MFT\n");
+	errtest = ReadFile(dev, mftbb, MFTRecordSize, &brre, NULL);
+	if (errtest == 0)
+		outerr(GetLastError());
+	//struct NTFS_MFT_FILE *MFT = (struct NTFS_MFT_FILE*)mftbb;
+	//BYTE * mftrecordtempvar = &mftbb;
+	BYTE * mftrecordtempvar;
+	__asm
+	{
+		PUSH EAX
+		MOV EAX, mftbb
+		MOV mftrecordtempvar, EAX
+		POP EAX
+	}
+	struct NTFS_MFT_FILE *MFT = (struct NTFS_MFT_FILE*)mftrecordtempvar;
+	printf("5. Read $MFT; Querying files\n");
+
+	struct NTFS_ATTRIBUTE * ntatr_std;
+	struct NTFS_ATTRIBUTE * ntatr_fnm;
+
+	DWORD curpos = MFT->wAttribOffset;
+
+	while (1) {
+		__asm
+		{
+			PUSH EAX
+			MOV EAX, mftbb
+			ADD EAX, [curpos]
+			MOV mftrecordtempvar, EAX
+			POP EAX
+		}
+		struct NTFS_ATTRIBUTE * ntatr = (struct NTFS_ATTRIBUTE*)mftrecordtempvar;
+
+		DWORD nextatr = ntatr->dwFullLength;
+
+		if (ntatr->dwType == 0x10)
+			ntatr_std = (struct NTFS_ATTRIBUTE*)mftrecordtempvar;
+		if (ntatr->dwType == 0x30) 
+		{
+			/*ntatr_fnm = (struct NTFS_ATTRIBUTE*)mftrecordtempvar;
+			DWORD filenamepointer = ntatr_fnm->wNameOffset;
+			char * c = *(mftrecordtempvar + filenamepointer);*/
+			BYTE filesize = mftrecordtempvar + 0x40;
+			wchar_t * c = mftrecordtempvar + 0x42;
+			*c = *(mftrecordtempvar + 0x42); // $MFT is near, use memory viewer!
+			printf("");
+		}
+
+		if (ntatr->dwType == -1)
+			break;
+
+		curpos += nextatr;
+	}
+	//AGAIN
+	while (1) 
+	{
+		SetFilePointer(dev, 1024, 0, FILE_CURRENT);
+		curpos = 0;
+		errtest = ReadFile(dev, mftbb, MFTRecordSize, &brre, NULL);
+		if (errtest == 0)
+			outerr(GetLastError());
+		//struct NTFS_MFT_FILE *MFT = (struct NTFS_MFT_FILE*)mftbb;
+		//BYTE * mftrecordtempvar = &mftbb;
+		__asm
+		{
+			PUSH EAX
+			MOV EAX, mftbb
+			MOV mftrecordtempvar, EAX
+			POP EAX
+		}
+		MFT = (struct NTFS_MFT_FILE*)mftrecordtempvar;
+		printf("5. Read $MFT; Querying files\n");
+
+		curpos = MFT->wAttribOffset;
+
+		while (1) {
+			__asm
+			{
+				PUSH EAX
+				MOV EAX, mftbb
+				ADD EAX, [curpos]
+				MOV mftrecordtempvar, EAX
+				POP EAX
+			}
+			struct NTFS_ATTRIBUTE * ntatr = (struct NTFS_ATTRIBUTE*)mftrecordtempvar;
+
+			DWORD nextatr = ntatr->dwFullLength;
+
+			if (ntatr->dwType == 0x10)
+				ntatr_std = (struct NTFS_ATTRIBUTE*)mftrecordtempvar;
+			if (ntatr->dwType == 0x30)
+			{
+				ntatr_fnm = (struct NTFS_ATTRIBUTE*)mftrecordtempvar;
+				DWORD filenamepointer = ntatr_fnm->wNameOffset;
+				char * c = *(mftrecordtempvar + filenamepointer);
+				OutputDebugStringA(c);
+			}
+
+			if (ntatr->dwType == -1)
+				break;
+
+			curpos += nextatr;
+		}
+	}
+	//Read whole MFT
+	
 
 
     return 0;
