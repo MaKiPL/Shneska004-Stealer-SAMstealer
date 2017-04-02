@@ -106,6 +106,7 @@ DWORD bytespersector = 0;
 LARGE_INTEGER cylinders = { 0 };
 DWORD sectorspertrack = 0;
 DWORD trackpercylinder = 0;
+DWORD bShouldStop = 0;
 
 int main()
 {
@@ -274,11 +275,17 @@ int main()
 		curpos += nextatr;
 	}
 
+	FILE * fwriteout = fopen("D:\debug.log", "a+");
+
+
 	//LOOPSTER
 	while (1)
 	{
-		SetFilePointer(dev, 1024, NULL, FILE_CURRENT);
-		errtest = ReadFile(dev, mftbb, MFTRecordSize, &brre, NULL);
+	returnhere:
+		if (bShouldStop > 30)
+			break;
+		//SetFilePointer(dev, 1024, NULL, FILE_CURRENT); //I don't fucking believe I actually left it here
+		errtest = ReadFile(dev, mftbb, 1024, &brre, NULL);
 		if (errtest == 0)
 			outerr(GetLastError());
 		__asm
@@ -289,6 +296,20 @@ int main()
 			POP EAX
 		}
 		MFT = (struct NTFS_MFT_FILE*)mftrecordtempvar;
+		if (MFT->szSignature[0] != 'F')
+		{
+			bShouldStop++;
+			goto returnhere;
+		}
+		DWORD baseadr;
+		__asm
+		{
+			PUSH EAX
+			//LEA EAX, mftrecordtempvar
+			MOV EAX, mftrecordtempvar
+			MOV [baseadr], EAX
+			POP EAX
+		}
 		curpos = MFT->wAttribOffset;
 		while (1) {
 			__asm
@@ -299,9 +320,18 @@ int main()
 				MOV mftrecordtempvar, EAX
 				POP EAX
 			}
-			struct NTFS_ATTRIBUTE * ntatr = (struct NTFS_ATTRIBUTE*)mftrecordtempvar;
+			/*if (IsBadReadPtr(mftrecordtempvar, 0x30) != 0)
+				break;*/
+			if (mftrecordtempvar > baseadr + 1024)
+				break;
 
+			struct NTFS_ATTRIBUTE * ntatr = (struct NTFS_ATTRIBUTE*)mftrecordtempvar;
+			
 			DWORD nextatr = ntatr->dwFullLength;
+			if (nextatr == 0)
+				break;
+			if (ntatr->dwType != 0x10 && ntatr->dwType != 0x30)
+				break;
 
 			if (ntatr->dwType == 0x10)
 				ntatr_std = (struct NTFS_ATTRIBUTE*)mftrecordtempvar;
@@ -313,16 +343,15 @@ int main()
 
 				//wchar_t *c = (mftrecordtempvar + (0x42 + relFpath));
 				wchar_t *c = (mftrecordtempvar + (0x5A));
-				wprintf(L"%ls\n", c); //DELETE ME
+				//wprintf(L"%ls\n", c);
+				if(!lstrcmpW(c, L"SAM"))
+					wprintf(L"%ls\n", c);
+				//wprintf(L"%ls\n", c);
+				fwprintf(fwriteout, L"%ls\n", c);
+
 			}
 
-			if (ntatr->dwType == -1)
-				break;
-
-			if (ntatr->dwType == 0)
-				break;
-
-			curpos += (nextatr & 0xFFFF);
+			curpos += nextatr;
 		}
 	}
 	
