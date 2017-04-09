@@ -116,45 +116,15 @@ int main()
 	char * c = getenv("SYSTEMROOT");
 	rootdriver = *c ;
 	wchar_t * py = (wchar_t*)malloc(32);
-	wsprintf(py, L"%s%c%s", L"\\\\.\\", rootdriver, ":");
-	HANDLE dev = CreateFile(py, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_FLAG_NO_BUFFERING, NULL);
+	//wsprintf(py, L"%s%c%s", L"\\\\.\\", rootdriver, ":");
+	wsprintf(py, L"%ls%d", L"\\\\.\\PhysicalDrive", 0); //TODO
+	//HANDLE dev = CreateFile(py, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_FLAG_NO_BUFFERING, NULL); Partition filemode
+	HANDLE dev = CreateFile(py, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
 	if (dev == INVALID_HANDLE_VALUE)
 		return -1;
 	printf("1. Device opened\n");
 
 	DWORD brre = 1;
-
-	//MFT_ENUM_DATA * mftenumdata = malloc(sizeof( MFT_ENUM_DATA));
-	
-	/*mftenumdata.StartFileReferenceNumber = 0;
-	mftenumdata.LowUsn = 0;
-	
-
-	
-	DWORD bufffsz = 1024 * 1024;
-	VOID * outbuff = malloc(bufffsz);
-	if (!DeviceIoControl(dev, FSCTL_QUERY_USN_JOURNAL, NULL, 0, outbuff, bufffsz, &brre, NULL))
-		outerr(GetLastError());
-
-	printf("2. USN Journal grabbed\n");
-
-	USN_JOURNAL_DATA * jrnl;
-	USN_RECORD *usn;
-	jrnl = (USN_JOURNAL_DATA*)outbuff;
-	mftenumdata.LowUsn = 0;
-	mftenumdata.HighUsn = (USN)jrnl->MaxUsn;
-
-	if (DeviceIoControl(dev, FSCTL_ENUM_USN_DATA, &mftenumdata, sizeof(mftenumdata), outbuff, bufffsz, &brre, NULL))
-	{
-		usn = (USN_RECORD*)outbuff;
-		wprintf("%ws", usn->FileName);
-	}
-	else
-		outerr(GetLastError());
-
-	printf("3. Test ENUM USN jrnl success!\n");
-
-	*/
 	DISK_GEOMETRY * dg = malloc(sizeof(DISK_GEOMETRY));
 
 	if (DeviceIoControl(dev, IOCTL_DISK_GET_DRIVE_GEOMETRY, NULL, 0, dg, sizeof(DISK_GEOMETRY), &brre, NULL))
@@ -173,10 +143,7 @@ int main()
 	DWORD bootsz = bytespersector;
 	if (bytespersector > 512)
 		bootsz = 512;
-	int errtest = ReadFile(dev, ntfsboot, bootsz, &brre, NULL); //Error 87 if OutSize is not 1024 const. WTF???? 512 fixes critical kernel error.. lol wtf is happening here?
-	//okay, that's probably because you must read buffer as one sector (that's why non pow(2) values doesn't work)
-	//also I overwrote buffer and it could hit the important data so it caused critical kernel error on further memory operations
-	//and also main return
+	int errtest = ReadFile(dev, ntfsboot, bootsz, &brre, NULL); 
 	if(errtest==0)
 		outerr(GetLastError());
 	struct NTFS_PART_BOOT_SEC * ntboot = (struct NTFS_PART_BOOT_SEC*)ntfsboot;
@@ -192,24 +159,6 @@ int main()
 
 	DWORD MFTRecordSize = 0x01 << ((-1)*((char)ntboot->bpb.nClustPerMFTRecord));
 
-
-	/*
-	while (1)
-	{
-
-		if (DeviceIoControl(dev, FSCTL_ENUM_USN_DATA, &mftenumdata, sizeof(mftenumdata), outbuff, bufffsz, &brre, NULL))
-		{
-			usn = (USN_RECORD*)outbuff;
-			if (CheckFile(usn))
-				break;
-			else
-				mftenumdata.StartFileReferenceNumber = *((DWORDLONG*)outbuff);
-		}
-		else
-			outerr(GetLastError());
-	}
-	*/
-
 	int * mftbb = malloc(sizeof(byte) * MFTRecordSize);
 
 
@@ -222,8 +171,6 @@ int main()
 	errtest = ReadFile(dev, mftbb, MFTRecordSize, &brre, NULL);
 	if (errtest == 0)
 		outerr(GetLastError());
-	//struct NTFS_MFT_FILE *MFT = (struct NTFS_MFT_FILE*)mftbb;
-	//BYTE * mftrecordtempvar = &mftbb;
 	BYTE * mftrecordtempvar;
 	__asm
 	{
@@ -257,12 +204,8 @@ int main()
 			ntatr_std = (struct NTFS_ATTRIBUTE*)mftrecordtempvar;
 		if (ntatr->dwType == 0x30) 
 		{
-			ntatr_fnm = (struct NTFS_ATTRIBUTE*)mftrecordtempvar;
-			/*DWORD filenamepointer = ntatr_fnm->wNameOffset;
-			char * dc = *(mftrecordtempvar + filenamepointer);*/
-				//BYTE filesize = mftrecordtempvar + 0x40; invalid?
-			
-			wchar_t *c = (mftrecordtempvar + (0x42 + ntatr_fnm->wNameOffset)); // $MFT is near, use memory viewer!
+			ntatr_fnm = (struct NTFS_ATTRIBUTE*)mftrecordtempvar;			
+			wchar_t *c = (mftrecordtempvar + (0x42 + ntatr_fnm->wNameOffset));
 			if (!lstrcmpW(c, L"$FMT"))
 				return -1;
 
@@ -284,7 +227,6 @@ int main()
 	returnhere:
 		if (bShouldStop > 30)
 			break;
-		//SetFilePointer(dev, 1024, NULL, FILE_CURRENT); //I don't fucking believe I actually left it here
 		errtest = ReadFile(dev, mftbb, 1024, &brre, NULL);
 		if (errtest == 0)
 			outerr(GetLastError());
@@ -305,7 +247,6 @@ int main()
 		__asm
 		{
 			PUSH EAX
-			//LEA EAX, mftrecordtempvar
 			MOV EAX, mftrecordtempvar
 			MOV [baseadr], EAX
 			POP EAX
@@ -320,8 +261,6 @@ int main()
 				MOV mftrecordtempvar, EAX
 				POP EAX
 			}
-			/*if (IsBadReadPtr(mftrecordtempvar, 0x30) != 0)
-				break;*/
 			if (mftrecordtempvar > baseadr + 1024)
 				break;
 
@@ -341,12 +280,9 @@ int main()
 				DWORD relFpath = ntatr_fnm->wNameOffset;
 				relFpath = relFpath == 0 ? 0x0F : relFpath;
 
-				//wchar_t *c = (mftrecordtempvar + (0x42 + relFpath));
 				wchar_t *c = (mftrecordtempvar + (0x5A));
-				//wprintf(L"%ls\n", c);
 				if(!lstrcmpW(c, L"SAM"))
 					wprintf(L"%ls\n", c);
-				//wprintf(L"%ls\n", c);
 				fwprintf(fwriteout, L"%ls\n", c);
 
 			}
@@ -370,17 +306,3 @@ void outerr(DWORD errmess)
 		INT 21h
 	}
 }
-
-/*DWORD CheckFile(USN_RECORD *rec) //DEBUG version
-{
-	__asm
-	{
-		INC [filescount]
-	}
-	if (rec->FileName)
-	{
-		printf("%ws", rec->FileName);
-	}
-		return 0;
-}
-*/
