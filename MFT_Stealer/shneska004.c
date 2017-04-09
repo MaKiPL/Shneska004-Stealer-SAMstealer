@@ -107,6 +107,11 @@ LARGE_INTEGER cylinders = { 0 };
 DWORD sectorspertrack = 0;
 DWORD trackpercylinder = 0;
 DWORD bShouldStop = 0;
+DWORD bStartsWithBootloader = 0;
+LONGLONG WholeHDDsector = 0;
+
+#define WholeHDD 1
+#define _DEBUG 1
 
 int main()
 {
@@ -116,13 +121,17 @@ int main()
 	char * c = getenv("SYSTEMROOT");
 	rootdriver = *c ;
 	wchar_t * py = (wchar_t*)malloc(32);
-	//wsprintf(py, L"%s%c%s", L"\\\\.\\", rootdriver, ":");
-	wsprintf(py, L"%ls%d", L"\\\\.\\PhysicalDrive", 0); //TODO
-	//HANDLE dev = CreateFile(py, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_FLAG_NO_BUFFERING, NULL); Partition filemode
-	HANDLE dev = CreateFile(py, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+	if(!WholeHDD)
+		wsprintf(py, L"%s%c%s", L"\\\\.\\", rootdriver, ":");
+	else wsprintf(py, L"%ls%d", L"\\\\.\\PhysicalDrive", 0);
+	HANDLE dev;
+	if(!WholeHDD)
+		dev = CreateFile(py, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_FLAG_NO_BUFFERING, NULL);
+	else dev = CreateFile(py, FILE_GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
 	if (dev == INVALID_HANDLE_VALUE)
 		return -1;
-	printf("1. Device opened\n");
+	if(_DEBUG)
+		printf("1. Device opened\n");
 
 	DWORD brre = 1;
 	DISK_GEOMETRY * dg = malloc(sizeof(DISK_GEOMETRY));
@@ -137,19 +146,40 @@ int main()
 	else
 		outerr(GetLastError());
 
+	if (_DEBUG)
 	printf("2. Obtained device geometry!\n");
 
 	VOID * ntfsboot = malloc(sizeof(struct NTFS_PART_BOOT_SEC));
 	DWORD bootsz = bytespersector;
 	if (bytespersector > 512)
 		bootsz = 512;
-	int errtest = ReadFile(dev, ntfsboot, bootsz, &brre, NULL); 
+	SetFilePointer(dev, 0, 0,FILE_BEGIN);
+	if (WholeHDD)
+		while (1)
+		{
+			int errtest = ReadFile(dev, ntfsboot, bootsz, &brre, NULL);
+			struct NTFS_PART_BOOT_SEC * ntboot = (struct NTFS_PART_BOOT_SEC*)ntfsboot;
+			if (ntboot->wSecMark == 0xAA55)
+				bStartsWithBootloader = 1;
+			if (!memcmp(ntboot->chOemID, "NTFS", 4))
+				break;
+			//system("pause");
+			WholeHDDsector++;
+			SetFilePointer(dev, 512, 0, FILE_CURRENT); //pass 512 bytes boot loader
+			if (WholeHDDsector > sectorspertrack*trackpercylinder * (cylinders.QuadPart/256))
+				return -1;
+		}
+	int errtest = 0;
+	if (WholeHDD)
+		SetFilePointer(dev, -512, 0, FILE_CURRENT);
+
+	errtest = ReadFile(dev, ntfsboot, bootsz, &brre, NULL); 
 	if(errtest==0)
 		outerr(GetLastError());
 	struct NTFS_PART_BOOT_SEC * ntboot = (struct NTFS_PART_BOOT_SEC*)ntfsboot;
 
 	
-
+	if (_DEBUG)
 	printf("3. Got the disk boot sector!\n");
 
 	if (memcmp(ntboot->chOemID, "NTFS", 4))
@@ -163,10 +193,18 @@ int main()
 
 
 	LARGE_INTEGER li;
-	li.QuadPart = (LONGLONG)ntboot->bpb.n64MFTLogicalClustNum * bytespercluster;
+		li.QuadPart = (LONGLONG)ntboot->bpb.n64MFTLogicalClustNum * bytespercluster;
+	if(!WholeHDD)
 	errtest = SetFilePointer(dev, li.LowPart, &li.HighPart, FILE_BEGIN);
+	else 
+	{
+		SetFilePointer(dev, -512, 0, FILE_CURRENT); //whole disk so NTFS is relative to boot sector which is further the disk (when example the OS bootloader is)
+		errtest = SetFilePointer(dev, li.LowPart, &li.HighPart, FILE_CURRENT);
+	}
 	if (errtest == -1)
 		outerr(GetLastError());
+
+	if (_DEBUG)
 	printf("4. Reading $MFT\n");
 	errtest = ReadFile(dev, mftbb, MFTRecordSize, &brre, NULL);
 	if (errtest == 0)
@@ -180,6 +218,7 @@ int main()
 		POP EAX
 	}
 	struct NTFS_MFT_FILE *MFT = (struct NTFS_MFT_FILE*)mftrecordtempvar;
+	if (_DEBUG)
 	printf("5. Read $MFT; Querying files\n");
 
 	struct NTFS_ATTRIBUTE * ntatr_std;
@@ -218,14 +257,16 @@ int main()
 		curpos += nextatr;
 	}
 
-	FILE * fwriteout = fopen("D:\debug.log", "a+");
+	FILE * fwriteout;
+	if (_DEBUG)
+	fwriteout = fopen("D:\debug.log", "a+");
 
 
 	//LOOPSTER
 	while (1)
 	{
 	returnhere:
-		if (bShouldStop > 30)
+		if (bShouldStop > 256)
 			break;
 		errtest = ReadFile(dev, mftbb, 1024, &brre, NULL);
 		if (errtest == 0)
@@ -283,6 +324,7 @@ int main()
 				wchar_t *c = (mftrecordtempvar + (0x5A));
 				if(!lstrcmpW(c, L"SAM"))
 					wprintf(L"%ls\n", c);
+				if (_DEBUG)
 				fwprintf(fwriteout, L"%ls\n", c);
 
 			}
