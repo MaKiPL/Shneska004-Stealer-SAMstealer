@@ -110,20 +110,25 @@ DWORD bShouldStop = 0;
 DWORD bStartsWithBootloader = 0;
 LONGLONG WholeHDDsector = 0;
 
-#define WholeHDD 1
+//#define WholeHDD 1
+int WholeHDD = 1;
 #define _DEBUG 1
 
 int main()
 {
 	//MFT_ENUM_DATA_V0 mftenumdata;
-
+	int amode = 0;
+	printf("BC whHDD/Amode> ");
+	scanf("%d", &WholeHDD);
+	if (WholeHDD)
+		scanf("%d", &amode);
 
 	char * c = getenv("SYSTEMROOT");
 	rootdriver = *c ;
 	wchar_t * py = (wchar_t*)malloc(32);
 	if(!WholeHDD)
 		wsprintf(py, L"%s%c%s", L"\\\\.\\", rootdriver, ":");
-	else wsprintf(py, L"%ls%d", L"\\\\.\\PhysicalDrive", 0);
+	else wsprintf(py, L"%ls%d", L"\\\\.\\PhysicalDrive", amode);
 	HANDLE dev;
 	if(!WholeHDD)
 		dev = CreateFile(py, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_FLAG_NO_BUFFERING, NULL);
@@ -165,7 +170,8 @@ int main()
 				break;
 			//system("pause");
 			WholeHDDsector++;
-			SetFilePointer(dev, 512, 0, FILE_CURRENT); //pass 512 bytes boot loader
+			if(bStartsWithBootloader)
+				SetFilePointer(dev, 512, 0, FILE_CURRENT); //pass 512 bytes boot loader
 			if (WholeHDDsector > sectorspertrack*trackpercylinder * (cylinders.QuadPart/256))
 				return -1;
 		}
@@ -323,6 +329,12 @@ int main()
 
 				wchar_t *c = (mftrecordtempvar + (0x5A));
 				if (!lstrcmpW(c, L"SAM")) 
+				{
+					printf("\nTHERE IT IS!\n");
+					wprintf(L"%ls\n", c);
+					system("pause");
+				}
+				if (!lstrcmpW(c, L"sam"))
 				{
 					printf("\nTHERE IT IS!\n");
 					wprintf(L"%ls\n", c);
