@@ -259,7 +259,7 @@ int main()
 
 	FILE * fwriteout;
 	if (_DEBUG)
-	fwriteout = fopen("D:\debug.log", "a+");
+	fwriteout = fopen("D:\\debug.log", "a+");
 
 
 	//LOOPSTER
@@ -322,8 +322,12 @@ int main()
 				relFpath = relFpath == 0 ? 0x0F : relFpath;
 
 				wchar_t *c = (mftrecordtempvar + (0x5A));
-				if(!lstrcmpW(c, L"SAM"))
+				if (!lstrcmpW(c, L"SAM")) 
+				{
+					printf("\nTHERE IT IS!\n");
 					wprintf(L"%ls\n", c);
+					system("pause");
+				}
 				if (_DEBUG)
 				fwprintf(fwriteout, L"%ls\n", c);
 
